@@ -18,28 +18,22 @@ describe("multisig", () => {
 
     // create multisig
     const { multisig, multisigSigner } = await createMultisig(program, owners, threshold);
+    await assertCreateMultisig(program, multisig.publicKey, owners);
   
     // proposal information (target program, accounts, params)
     const pid = program.programId;
     const accounts = [
-      {
-        pubkey: multisig.publicKey,
-        isWritable: true,
-        isSigner: false,
-      },
-      {
-        pubkey: multisigSigner,
-        isWritable: false,
-        isSigner: true,
-      },
+      account(multisig.publicKey, true, false),
+      account(multisigSigner, false, true),
     ];
     const newOwners = [ownerA.publicKey, ownerB.publicKey, ownerD.publicKey];
     const data = program.coder.instruction.encode("set_owners", {
       owners: newOwners,
     });
 
-    // create the proposal
     const { proposal } = await createProposal(program, multisig, ownerA, { pid, accounts, data });
+    await assertCreateProposal(program, proposal.publicKey, pid, accounts, data, multisig.publicKey);
+
 
     // other owner approves transactoin
     await approve(program, multisig, proposal, ownerB);
@@ -51,24 +45,18 @@ describe("multisig", () => {
         multisigSigner,
         transaction: proposal.publicKey,
       },
-      remainingAccounts: program.instruction.setOwners
-        .accounts({
-          multisig: multisig.publicKey,
-          multisigSigner,
-        })
-        // Change the signer status on the vendor signer since it's signed by the program, not the client.
-        .map((meta) =>
-          meta.pubkey.equals(multisigSigner)
-            ? { ...meta, isSigner: false }
-            : meta
-        )
-        .concat({
-          pubkey: program.programId,
-          isWritable: false,
-          isSigner: false,
-        }),
+      remainingAccounts: [
+        account(multisig.publicKey, true, false),
+        account(multisigSigner, false, false),
+        account(program.programId, false, false),
+      ]
     });
+    await assertExecuteTransaction(program, multisig.publicKey, newOwners);
   });
+});
+
+const account = (pubkey, isWritable, isSigner) => ({
+  pubkey, isWritable, isSigner,
 });
 
 const createMultisig = async (program, owners, threshold) => {
@@ -131,4 +119,28 @@ const approve = async (program, multisig, proposal, voter) => {
     },
     signers: [voter],
   });
+}
+
+const assertCreateMultisig = async (program, multisig, owners) => {
+  let multisigAccount = await program.account.multisig.fetch(multisig);
+  assert.ok(multisigAccount.threshold.eq(new anchor.BN(2)));
+  assert.deepStrictEqual(multisigAccount.owners, owners);
+  assert.ok(multisigAccount.ownerSetSeqno === 0);
+}
+
+const assertCreateProposal = async (program, proposal, pid, accounts, data, multisig) => {
+  const txAccount = await program.account.transaction.fetch(proposal);
+  assert.ok(txAccount.programId.equals(pid));
+  assert.deepStrictEqual(txAccount.accounts, accounts);
+  assert.deepStrictEqual(txAccount.data, data);
+  assert.ok(txAccount.multisig.equals(multisig));
+  assert.deepStrictEqual(txAccount.didExecute, false);
+  assert.ok(txAccount.ownerSetSeqno === 0);
+}
+
+const assertExecuteTransaction = async (program, multisig, newOwners) => {
+  multisigAccount = await program.account.multisig.fetch(multisig);
+  assert.ok(multisigAccount.threshold.eq(new anchor.BN(2)));
+  assert.deepStrictEqual(multisigAccount.owners, newOwners);
+  assert.ok(multisigAccount.ownerSetSeqno === 1);
 }
