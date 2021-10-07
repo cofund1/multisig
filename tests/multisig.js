@@ -18,12 +18,12 @@ describe("multisig", () => {
 
     // create multisig
     const { multisig, multisigSigner } = await createMultisig(program, owners, threshold);
-    await assertCreateMultisig(program, multisig.publicKey, owners);
+    await assertCreateMultisig(program, multisig, owners);
   
-    // proposal information (target program, accounts, params)
+    // create proposal (target program, accounts, params)
     const pid = program.programId;
     const accounts = [
-      account(multisig.publicKey, true, false),
+      account(multisig, true, false),
       account(multisigSigner, false, true),
     ];
     const newOwners = [ownerA.publicKey, ownerB.publicKey, ownerD.publicKey];
@@ -32,26 +32,26 @@ describe("multisig", () => {
     });
 
     const { proposal } = await createProposal(program, multisig, ownerA, { pid, accounts, data });
-    await assertCreateProposal(program, proposal.publicKey, pid, accounts, data, multisig.publicKey);
+    await assertCreateProposal(program, proposal, pid, accounts, data, multisig);
 
 
     // other owner approves transactoin
     await approve(program, multisig, proposal, ownerB);
 
-    // Now that we've reached the threshold, send the transactoin.
+    // now that we've reached the threshold, send the transactoin.
     await program.rpc.executeTransaction({
       accounts: {
-        multisig: multisig.publicKey,
+        multisig,
         multisigSigner,
-        transaction: proposal.publicKey,
+        transaction: proposal,
       },
       remainingAccounts: [
-        account(multisig.publicKey, true, false),
+        account(multisig, true, false),
         account(multisigSigner, false, false),
         account(program.programId, false, false),
       ]
     });
-    await assertExecuteTransaction(program, multisig.publicKey, newOwners);
+    await assertExecuteTransaction(program, multisig, newOwners);
   });
 });
 
@@ -84,7 +84,7 @@ const createMultisig = async (program, owners, threshold) => {
     signers: [multisig],
   });
 
-  return { multisig, multisigSigner };
+  return { multisig: multisig.publicKey, multisigSigner };
 }
 
 const createProposal = async (program, multisig, proposer, proposedTransaction) => {
@@ -93,7 +93,7 @@ const createProposal = async (program, multisig, proposer, proposedTransaction) 
   const txSize = 1000; // Big enough, cuz I'm lazy.
   await program.rpc.createTransaction(pid, accounts, data, {
     accounts: {
-      multisig: multisig.publicKey,
+      multisig,
       transaction: transaction.publicKey,
       proposer: proposer.publicKey,
       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
@@ -107,14 +107,14 @@ const createProposal = async (program, multisig, proposer, proposedTransaction) 
     signers: [transaction, proposer],
   });
 
-  return { proposal: transaction };
+  return { proposal: transaction.publicKey };
 }
 
 const approve = async (program, multisig, proposal, voter) => {
   await program.rpc.approve({
     accounts: {
-      multisig: multisig.publicKey,
-      transaction: proposal.publicKey,
+      multisig,
+      transaction: proposal,
       owner: voter.publicKey,
     },
     signers: [voter],
