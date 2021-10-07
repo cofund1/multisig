@@ -38,20 +38,13 @@ describe("multisig", () => {
     // other owner approves transactoin
     await approve(program, multisig, proposal, ownerB);
 
-    // now that we've reached the threshold, send the transactoin.
-    await program.rpc.executeTransaction({
-      accounts: {
-        multisig,
-        multisigSigner,
-        transaction: proposal,
-      },
-      remainingAccounts: [
-        account(multisig, true, false),
-        account(multisigSigner, false, false),
-        account(program.programId, false, false),
-      ]
-    });
-    await assertExecuteTransaction(program, multisig, newOwners);
+    // now that we've reached the threshold, send the transactoin
+    await execProposal(program, multisig, multisigSigner, proposal, [
+      account(multisig, true, false),
+      account(multisigSigner, false, false),
+      account(pid, false, false),
+    ]);
+    await assertExecTransaction(program, multisig, newOwners);
   });
 });
 
@@ -121,6 +114,17 @@ const approve = async (program, multisig, proposal, voter) => {
   });
 }
 
+const execProposal = async (program, multisig, multisigSigner, proposal, proposalAccounts) => {
+  await program.rpc.executeTransaction({
+    accounts: {
+      multisig,
+      multisigSigner,
+      transaction: proposal,
+    },
+    remainingAccounts: proposalAccounts,
+  });
+}
+
 const assertCreateMultisig = async (program, multisig, owners) => {
   let multisigAccount = await program.account.multisig.fetch(multisig);
   assert.ok(multisigAccount.threshold.eq(new anchor.BN(2)));
@@ -138,7 +142,7 @@ const assertCreateProposal = async (program, proposal, pid, accounts, data, mult
   assert.ok(txAccount.ownerSetSeqno === 0);
 }
 
-const assertExecuteTransaction = async (program, multisig, newOwners) => {
+const assertExecTransaction = async (program, multisig, newOwners) => {
   multisigAccount = await program.account.multisig.fetch(multisig);
   assert.ok(multisigAccount.threshold.eq(new anchor.BN(2)));
   assert.deepStrictEqual(multisigAccount.owners, newOwners);
