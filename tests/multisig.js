@@ -41,15 +41,8 @@ describe("multisig", () => {
     // create the proposal
     const { proposal } = await createProposal(program, multisig, ownerA, { pid, accounts, data });
 
-    // Other owner approves transactoin.
-    await program.rpc.approve({
-      accounts: {
-        multisig: multisig.publicKey,
-        transaction: proposal.publicKey,
-        owner: ownerB.publicKey,
-      },
-      signers: [ownerB],
-    });
+    // other owner approves transactoin
+    await approve(program, multisig, proposal, ownerB);
 
     // Now that we've reached the threshold, send the transactoin.
     await program.rpc.executeTransaction({
@@ -127,4 +120,15 @@ const createProposal = async (program, multisig, proposer, proposedTransaction) 
   });
 
   return { proposal: transaction };
+}
+
+const approve = async (program, multisig, proposal, voter) => {
+  await program.rpc.approve({
+    accounts: {
+      multisig: multisig.publicKey,
+      transaction: proposal.publicKey,
+      owner: voter.publicKey,
+    },
+    signers: [voter],
+  });
 }
