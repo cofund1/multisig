@@ -8,39 +8,16 @@ describe("multisig", () => {
   const program = anchor.workspace.SerumMultisig;
 
   it("Tests the multisig program", async () => {
-    const multisig = anchor.web3.Keypair.generate();
-    const [
-      multisigSigner,
-      nonce,
-    ] = await anchor.web3.PublicKey.findProgramAddress(
-      [multisig.publicKey.toBuffer()],
-      program.programId
-    );
-    const multisigSize = 200; // Big enough.
-
     const ownerA = anchor.web3.Keypair.generate();
     const ownerB = anchor.web3.Keypair.generate();
     const ownerC = anchor.web3.Keypair.generate();
     const ownerD = anchor.web3.Keypair.generate();
     const owners = [ownerA.publicKey, ownerB.publicKey, ownerC.publicKey];
+    const threshold = 2;
 
-    const threshold = new anchor.BN(2);
-    await program.rpc.createMultisig(owners, threshold, nonce, {
-      accounts: {
-        multisig: multisig.publicKey,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-      },
-      instructions: [
-        await program.account.multisig.createInstruction(
-          multisig,
-          multisigSize
-        ),
-      ],
-      signers: [multisig],
-    });
-
+    const { multisig, multisigSigner } = await createMultisig(program, owners, threshold);
+  
     let multisigAccount = await program.account.multisig.fetch(multisig.publicKey);
-    assert.strictEqual(multisigAccount.nonce, nonce);
     assert.ok(multisigAccount.threshold.eq(new anchor.BN(2)));
     assert.deepStrictEqual(multisigAccount.owners, owners);
     assert.ok(multisigAccount.ownerSetSeqno === 0);
@@ -127,9 +104,36 @@ describe("multisig", () => {
 
     multisigAccount = await program.account.multisig.fetch(multisig.publicKey);
 
-    assert.strictEqual(multisigAccount.nonce, nonce);
     assert.ok(multisigAccount.threshold.eq(new anchor.BN(2)));
     assert.deepStrictEqual(multisigAccount.owners, newOwners);
     assert.ok(multisigAccount.ownerSetSeqno === 1);
   });
 });
+
+const createMultisig = async (program, owners, threshold) => {
+  const multisig = anchor.web3.Keypair.generate();
+  const [
+    multisigSigner,
+    nonce,
+  ] = await anchor.web3.PublicKey.findProgramAddress(
+    [multisig.publicKey.toBuffer()],
+    program.programId
+  );
+  const multisigSize = 200; // Big enough.
+
+  await program.rpc.createMultisig(owners, new anchor.BN(threshold), nonce, {
+    accounts: {
+      multisig: multisig.publicKey,
+      rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+    },
+    instructions: [
+      await program.account.multisig.createInstruction(
+        multisig,
+        multisigSize
+      ),
+    ],
+    signers: [multisig],
+  });
+
+  return { multisig, multisigSigner };
+}
